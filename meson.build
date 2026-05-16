@@ -5,10 +5,13 @@ project(
     default_options: ['warning_level=3', 'cpp_std=c++20']
 )
 
+inc = include_directories('src')
+
 sir_quadtree = executable(
     'sir-quadtree',
     sources: [
         'src/main.cpp'
     ],
+    include_directories: inc,
     install : false
 )
