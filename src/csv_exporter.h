@@ -25,9 +25,8 @@ public:
 
   void write_micro(double time, const std::vector<Agent>& agents) {
     if (micro_file_.is_open()) {
-      for (size_t id = 0; id < agents.size(); ++id) {
-        const auto& a = agents[id];
-        micro_file_ << time << "," << id << "," << a.position.x << ","
+      for (const auto& a : agents) {
+        micro_file_ << time << "," << a.id << "," << a.position.x << ","
                     << a.position.y << "," << static_cast<int>(a.state) << "\n";
       }
     }

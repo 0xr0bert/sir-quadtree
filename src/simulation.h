@@ -1,10 +1,13 @@
 #pragma once
 
 #include "agent.h"
+#include "region_subsystem.h"
+#include <atomic>
 #include <barrier>
+#include <memory>
+#include <random>
 #include <thread>
 #include <vector>
-#include <atomic>
 
 struct SimulationConfig {
   double width;
@@ -15,8 +18,6 @@ struct SimulationConfig {
   double dt;
 };
 
-class Quadtree; // Forward declaration
-
 class Simulation {
 public:
   Simulation(int num_agents, const SimulationConfig& config);
@@ -24,21 +25,20 @@ public:
 
   void step();
 
-  [[nodiscard]] const std::vector<Agent>& get_agents() const { return agents_; }
+  [[nodiscard]] std::vector<Agent> get_agents() const;
 
 private:
-  void worker_thread(unsigned int thread_id);
-  void update_range(size_t start, size_t end, const Quadtree& tree);
+  void worker_thread(unsigned int region_id);
+  void process_regional_infections(unsigned int region_id);
+  [[nodiscard]] int get_region_index(const Vec2& pos) const;
 
-  std::vector<Agent> agents_;
-  std::vector<Agent> agents_next_;
+  std::vector<std::unique_ptr<RegionSubsystem>> regions_;
   SimulationConfig config_;
-  
+
   unsigned int num_threads_;
   std::vector<std::thread> workers_;
-  
+
   // Synchronization
   std::barrier<> sync_point_;
   std::atomic<bool> running_{true};
-  std::unique_ptr<Quadtree> current_tree_;
 };
