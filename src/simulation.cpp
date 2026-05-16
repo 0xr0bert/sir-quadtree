@@ -1,9 +1,7 @@
 #include "simulation.h"
-#include <random>
 
 Simulation::Simulation(const int num_agents, const SimulationConfig &config)
-    : config_(config) {
-  std::mt19937 gen(std::random_device{}());
+    : config_(config), gen_(std::random_device{}()) {
   std::uniform_real_distribution<double> dist_x(0.0, config_.width);
   std::uniform_real_distribution<double> dist_y(0.0, config_.height);
   std::uniform_real_distribution<double> dist_v(-1.0, 1.0);
@@ -11,14 +9,78 @@ Simulation::Simulation(const int num_agents, const SimulationConfig &config)
   agents_.reserve(num_agents);
   for (int i = 0; i < num_agents; ++i) {
     Agent agent;
-    agent.position = {dist_x(gen), dist_y(gen)};
-    agent.velocity = {dist_v(gen), dist_v(gen)};
-    agent.state = (i == 0) ? SirState::INFECTED : SirState::SUSCEPTIBLE;
-    agent.time_in_state = 0.0;
+    agent.position = {dist_x(gen_), dist_y(gen_)};
+    agent.velocity = {dist_v(gen_), dist_v(gen_)};
+    if (i == 0) {
+      agent.state = SirState::INFECTED;
+      agent.time_in_state = config_.recovery_time;
+    } else {
+      agent.state = SirState::SUSCEPTIBLE;
+      agent.time_in_state = 0.0;
+    }
     agents_.push_back(agent);
   }
 }
 
 void Simulation::step() {
-  // To be implemented: movement and infection logic
+  move();
+  process_infections();
+  process_recoveries();
+}
+
+void Simulation::move() {
+  for (auto &agent : agents_) {
+    agent.position.x += agent.velocity.x * config_.dt;
+    agent.position.y += agent.velocity.y * config_.dt;
+
+    // Toroidal wrap around
+    if (agent.position.x < 0)
+      agent.position.x += config_.width;
+    else if (agent.position.x >= config_.width)
+      agent.position.x -= config_.width;
+
+    if (agent.position.y < 0)
+      agent.position.y += config_.height;
+    else if (agent.position.y >= config_.height)
+      agent.position.y -= config_.height;
+  }
+}
+
+void Simulation::process_infections() {
+  std::uniform_real_distribution<double> prob_dist(0.0, 1.0);
+  const double radius_sq = config_.infection_radius * config_.infection_radius;
+
+  for (size_t i = 0; i < agents_.size(); ++i) {
+    if (agents_[i].state == SirState::INFECTED) {
+      for (size_t j = 0; j < agents_.size(); ++j) {
+        if (agents_[j].state == SirState::SUSCEPTIBLE) {
+          if (agents_[i].position.dist_sq(agents_[j].position) < radius_sq) {
+            if (prob_dist(gen_) < config_.infection_probability) {
+              agents_[j].state = SirState::NEWLY_INFECTED;
+              agents_[j].time_in_state = config_.recovery_time;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Resolve NEWLY_INFECTED to INFECTED
+  for (auto &agent : agents_) {
+    if (agent.state == SirState::NEWLY_INFECTED) {
+      agent.state = SirState::INFECTED;
+    }
+  }
+}
+
+void Simulation::process_recoveries() {
+  for (auto &agent : agents_) {
+    if (agent.state == SirState::INFECTED) {
+      agent.time_in_state -= config_.dt;
+      if (agent.time_in_state <= 0.0) {
+        agent.state = SirState::RECOVERED;
+        agent.time_in_state = 0.0;
+      }
+    }
+  }
 }

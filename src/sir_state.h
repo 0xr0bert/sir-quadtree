@@ -3,5 +3,6 @@
 enum class SirState {
   SUSCEPTIBLE,
   INFECTED,
-  RECOVERED
+  RECOVERED,
+  NEWLY_INFECTED
 };
