@@ -1,3 +1,4 @@
+#include "csv_exporter.h"
 #include "simulation.h"
 #include <iostream>
 #include <string>
@@ -24,23 +25,36 @@ int main(const int argc, const char* const argv[]) {
     const int num_steps = std::stoi(argv[8]);
 
     Simulation sim(num_agents, config);
+    CSVExporter exporter("macro.csv", "micro.csv");
 
-    for (int i = 0; i < num_steps; ++i) {
+    double current_time = 0.0;
+    for (int step = 0; step < num_steps; ++step) {
       sim.step();
 
+      // Macro view: Count states
+      int s = 0, i = 0, r = 0;
+      const auto& agents = sim.get_agents();
+      for (const auto& a : agents) {
+        if (a.state == SirState::SUSCEPTIBLE)
+          s++;
+        else if (a.state == SirState::INFECTED)
+          i++;
+        else if (a.state == SirState::RECOVERED)
+          r++;
+      }
+      exporter.write_macro(current_time, s, i, r);
+      exporter.write_micro(current_time, agents);
+
+      current_time += config.dt;
+
       // Optional: Print progress every 100 steps
-      if (i % 100 == 0) {
-        int infected = 0;
-        for (const auto& agent : sim.get_agents()) {
-          if (agent.state == SirState::INFECTED)
-            infected++;
-        }
-        std::cout << "Step " << i << ": " << infected << " agents infected."
+      if (step % 100 == 0) {
+        std::cout << "Step " << step << ": " << i << " agents infected."
                   << std::endl;
       }
     }
 
-    std::cout << "Simulation completed after " << num_steps << " steps."
+    std::cout << "Simulation completed. Data saved to macro.csv and micro.csv"
               << std::endl;
 
   } catch (const std::exception& e) {
