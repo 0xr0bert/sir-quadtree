@@ -10,7 +10,8 @@ inc = include_directories('src')
 sir_quadtree = executable(
     'sir-quadtree',
     sources: [
-        'src/main.cpp'
+        'src/main.cpp',
+        'src/simulation.cpp'
     ],
     include_directories: inc,
     install : false
