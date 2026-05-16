@@ -1,5 +1,6 @@
 #include "simulation.h"
 #include "quadtree.h"
+#include <algorithm>
 #include <cmath>
 
 Simulation::Simulation(const int num_agents, const SimulationConfig& config)
@@ -22,40 +23,51 @@ Simulation::Simulation(const int num_agents, const SimulationConfig& config)
     }
     agents_.push_back(agent);
   }
+  // Initialize write buffer
+  agents_next_ = agents_;
 }
 
 void Simulation::step() {
-  move();
+  // Step 0: Sync write buffer with current state to ensure all fields are
+  // correct
+  // (Alternatively, each function could handle all field updates)
+  agents_next_ = agents_;
 
-  // Build Phase: Create a new root Quadtree spanning the world boundaries.
+  // Build Quadtree on the read-only agents_ buffer
   const AABB world_boundary{.center = {config_.width / 2.0, config_.height / 2.0},
                              .half_width = config_.width / 2.0,
                              .half_height = config_.height / 2.0};
-  Quadtree tree(world_boundary, 8); // Capacity 8
-
+  Quadtree tree(world_boundary, 8);
   for (size_t i = 0; i < agents_.size(); ++i) {
     tree.insert(i, agents_);
   }
 
+  move();
   process_infections(tree);
   process_recoveries();
+
+  // Swap buffers
+  std::swap(agents_, agents_next_);
 }
 
 void Simulation::move() {
-  for (auto& agent : agents_) {
-    agent.position.x += agent.velocity.x * config_.dt;
-    agent.position.y += agent.velocity.y * config_.dt;
+  for (size_t i = 0; i < agents_.size(); ++i) {
+    const auto& agent_read = agents_[i];
+    auto& agent_write = agents_next_[i];
+
+    agent_write.position.x = agent_read.position.x + agent_read.velocity.x * config_.dt;
+    agent_write.position.y = agent_read.position.y + agent_read.velocity.y * config_.dt;
 
     // Toroidal wrap around
-    if (agent.position.x < 0)
-      agent.position.x += config_.width;
-    else if (agent.position.x >= config_.width)
-      agent.position.x -= config_.width;
+    if (agent_write.position.x < 0)
+      agent_write.position.x += config_.width;
+    else if (agent_write.position.x >= config_.width)
+      agent_write.position.x -= config_.width;
 
-    if (agent.position.y < 0)
-      agent.position.y += config_.height;
-    else if (agent.position.y >= config_.height)
-      agent.position.y -= config_.height;
+    if (agent_write.position.y < 0)
+      agent_write.position.y += config_.height;
+    else if (agent_write.position.y >= config_.height)
+      agent_write.position.y -= config_.height;
   }
 }
 
@@ -64,8 +76,8 @@ void Simulation::process_infections(const Quadtree& tree) {
   const double radius_sq = config_.infection_radius * config_.infection_radius;
 
   for (size_t i = 0; i < agents_.size(); ++i) {
+    // Only infected agents from the read buffer can infect others
     if (agents_[i].state == SirState::INFECTED) {
-      // Create a query AABB centered on agent i's position
       const AABB query_range{.center = agents_[i].position,
                              .half_width = config_.infection_radius,
                              .half_height = config_.infection_radius};
@@ -74,11 +86,12 @@ void Simulation::process_infections(const Quadtree& tree) {
       tree.query_range(query_range, nearby_indices, agents_);
 
       for (const size_t j : nearby_indices) {
+        // Check read buffer state, write to write buffer
         if (agents_[j].state == SirState::SUSCEPTIBLE) {
           if (agents_[i].position.dist_sq(agents_[j].position) < radius_sq) {
             if (prob_dist(gen_) < config_.infection_probability) {
-              agents_[j].state = SirState::NEWLY_INFECTED;
-              agents_[j].time_in_state = config_.recovery_time;
+              agents_next_[j].state = SirState::NEWLY_INFECTED;
+              agents_next_[j].time_in_state = config_.recovery_time;
             }
           }
         }
@@ -86,8 +99,8 @@ void Simulation::process_infections(const Quadtree& tree) {
     }
   }
 
-  // Resolve NEWLY_INFECTED to INFECTED
-  for (auto& agent : agents_) {
+  // Resolve NEWLY_INFECTED in the write buffer
+  for (auto& agent : agents_next_) {
     if (agent.state == SirState::NEWLY_INFECTED) {
       agent.state = SirState::INFECTED;
     }
@@ -95,12 +108,15 @@ void Simulation::process_infections(const Quadtree& tree) {
 }
 
 void Simulation::process_recoveries() {
-  for (auto& agent : agents_) {
-    if (agent.state == SirState::INFECTED) {
-      agent.time_in_state -= config_.dt;
-      if (agent.time_in_state <= 0.0) {
-        agent.state = SirState::RECOVERED;
-        agent.time_in_state = 0.0;
+  for (size_t i = 0; i < agents_.size(); ++i) {
+    const auto& agent_read = agents_[i];
+    auto& agent_write = agents_next_[i];
+
+    if (agent_read.state == SirState::INFECTED) {
+      agent_write.time_in_state = agent_read.time_in_state - config_.dt;
+      if (agent_write.time_in_state <= 0.0) {
+        agent_write.state = SirState::RECOVERED;
+        agent_write.time_in_state = 0.0;
       }
     }
   }

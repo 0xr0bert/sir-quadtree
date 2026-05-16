@@ -29,6 +29,7 @@ private:
   void process_recoveries();
 
   std::vector<Agent> agents_;
+  std::vector<Agent> agents_next_;
   SimulationConfig config_;
   std::mt19937 gen_;
 };
