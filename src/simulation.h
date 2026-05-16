@@ -13,6 +13,8 @@ struct SimulationConfig {
   double dt;
 };
 
+class Quadtree; // Forward declaration
+
 class Simulation {
 public:
   Simulation(int num_agents, const SimulationConfig& config);
@@ -23,7 +25,7 @@ public:
 
 private:
   void move();
-  void process_infections();
+  void process_infections(const Quadtree& tree);
   void process_recoveries();
 
   std::vector<Agent> agents_;
